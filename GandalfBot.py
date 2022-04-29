@@ -807,4 +807,4 @@ def weeb_check_queue(ctx, player):
 
 client.add_cog(Music(client))
 client.add_cog(Meme(client))
-client.run("NjgxODU5MzA1NTY5MjU1NDg2.Xqn4uA.wg3bmSu_TYm6bXq9YnW7BrT6P1M")
+client.run("")
