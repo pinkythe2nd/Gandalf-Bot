@@ -7,7 +7,7 @@ A custom Discord bot that plays music and web scrapes reddit. Made for a friends
 
 You must have a JSON file containg 5 keys that looks something like,
 
-{
+
 
     "DISCORD_KEY": "my_key",
     
@@ -19,4 +19,3 @@ You must have a JSON file containg 5 keys that looks something like,
     
     "CLIENT_SECRET": "my_key"
     
-}
