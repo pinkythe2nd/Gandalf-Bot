@@ -5,7 +5,7 @@ A custom Discord bot that plays music and web scrapes reddit. Made for a friends
 
 ---To Run---
 
-You must have a JSON file containg 5 keys that looks something like,
+You must have a JSON in the same directory as the python files. The file must contain 5 keys that looks something like,
 
 
 
