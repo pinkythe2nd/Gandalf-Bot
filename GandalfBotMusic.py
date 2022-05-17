@@ -321,6 +321,11 @@ class Music(commands.Cog):
             self.visual_queue.append(i["title"])
         return self.queue.pop(0)
 
+    def shorts(self, url):
+        before, after = url.split("shorts/")
+        new_url = before + "watch?v=" + after
+        return new_url
+
     @commands.command(aliases=["P", "p", "Play", "PLAY"], brief="play a song!")
     async def play(self, ctx, *, url):
         play_list_bool = False
@@ -330,9 +335,10 @@ class Music(commands.Cog):
                 url, embed = await self.playlist(url)
             elif "spotify" in url:
                 url = await self.spot(url)
-
             if "list" in url and "youtube" in url:
                 url = await self.yt_playlist(url)
+            if "short" in url and "youtube" in url:
+                url = self.shorts(url)
 
             if ctx.voice_client.is_playing() == False:
                 player = await YTDLSource.from_url(url, stream=True)
