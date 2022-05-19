@@ -47,7 +47,7 @@ async def on_ready():
     print(" ;'( ')/ ,)(                              ~~~~~~~~~~                       ")
     print(" ' ') '( (/                                                                ")
     print("    '   '  `                                                               ")
-    print("                         Gandalf 3.9 is up and running!                    ")
+    print("                         Gandalf 3.95 is up and running!                    ")
     await client.change_presence(status=discord.Status.online, activity=discord.Game(name=choice(status)))
 # ---------------------------------------Basic Bot---------------------------------------------------------------------"
 client.add_cog(Music(client))
