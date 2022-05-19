@@ -1,7 +1,7 @@
 from sys import platform
 from os import getcwd
-import logging
-import json
+from logging.handlers import RotatingFileHandler
+import logging, json, traceback
 
 if platform == "linux" or platform == "linux2":
     # linux
@@ -21,10 +21,18 @@ with open(JSON_PATH, "r") as f:
     loaded_json = json.load(f)
 
 #logging
-logging.basicConfig(filename=LOG_PATH, level=logging.WARNING)
+logger = logging.getLogger("Rotating Log")
+logger.setLevel(logging.ERROR)
+handler = RotatingFileHandler(LOG_PATH, maxBytes=10000, backupCount=5)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
-def write_error(E):
-    logging.warning(E)
+def write_error(error):
+    traceback.print_exception(
+                    type(error), error, error.__traceback__)
+    logger.error(str(error))
+    logger.error(traceback.format_exc())
 
 def critical_error(E):
     logging.critical(E)

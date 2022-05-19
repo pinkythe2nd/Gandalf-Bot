@@ -228,15 +228,13 @@ class Meme(commands.Cog):
 
     @commands.command(aliases=["Josh", "JOSH"], brief="Alex?")
     async def josh(self, ctx):
-        if random.randint(1, 5) == 1:
-            await ctx.channel.send("Likes Feet, like really likes feet🙄")
-        else:
-            josh_list = [f"{IMGPATH}feet1.jpg",
-                         f"{IMGPATH}feet2.jpg",
-                         f"{IMGPATH}feet3.jpg"]
-            josh_pick = random.choice(josh_list)
-            await ctx.channel.send(file=discord.File(josh_pick))
-            await ctx.channel.send("Feeling hot under the collar josh?")
+        subreddit = await reddit.subreddit("feetpics")
+        all_subs = []
+        async for submission in subreddit.hot(limit=100):
+            all_subs.append(submission)
+        random_sub = random.choice(all_subs)
+        await ctx.channel.send(random_sub.url, delete_after=4)
+        await ctx.message.delete(delay=3)
 
     @commands.command(aliases=["Alex", "Alan", "alan", "Alek", "alek"], brief="Josh?")
     async def alex(self, ctx):
@@ -296,7 +294,7 @@ class Meme(commands.Cog):
             async for submission in subreddit.hot(limit=100):
                 all_subs.append(submission)
             random_sub = random.choice(all_subs)
-            await ctx.channel.send(random_sub.url, delete_after=10)
+            await ctx.channel.send(random_sub.url, delete_after=4)
 
     @commands.command(aliases=["Godisdead"], brief="idk")
     async def godisdead(self, ctx):
