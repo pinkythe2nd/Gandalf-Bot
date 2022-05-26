@@ -1,6 +1,5 @@
 import spotipy, discord, youtube_dl
 import youtubesearchpython as yts
-#piss
 from discord.ext import commands
 from asyncio import sleep
 from GandalfBotPaths import *
@@ -11,11 +10,11 @@ SPOTIPY_CLIENT_SECRET = loaded_json["SPOTIPY_CLIENT_SECRET"]
 sp = spotipy.Spotify(client_credentials_manager=spotipy.oauth2.SpotifyClientCredentials(SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET))
 
 ytdl_format_options = {
-    "format": "bestaudio/best",
+    "format": "bestaudio",
     "extractaudio": True,
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
     "restrictfilenames": True,
-    "yesplaylist": True,
+    "noplaylist": True,
     "nocheckcertificate": True,
     #"ignoreerrors": True,
     #"logtostderr": False,
@@ -93,58 +92,53 @@ class Music(commands.Cog):
         self.disconnect_timer_check = False
         self._loop = False
         self._loop_url: str = ""
-        self._queue: list = []
-        self.visual_queue: list = []
+        self._queue: list = [] #list of tuples [0] is the url [1] is the title
         self.counter = 0
         self.client = client
         self.playing: str = ""
+        self.player = None
 
     async def stuck(self, safety):
         """takes in a string, returns a player and a embed"""
-        video = Video(safety)
+        print("WHEN DOES THIS HAPPEN! IF EVER?!")
         embed = discord.Embed(title="Cannot play. Sorry.", description="", color=0x1F5F9C) 
-        embed.add_field(name=(f"{video.title}"), value=(f"🐧"), inline=True)
-        player = -1
+        embed.add_field(name=(f"{safety[1]}"), value=(f"🐧"), inline=True)
+        self.player = -1
         if self._queue != []:
-            while player == -1:
-                next_song = self._queue.pop(0)
-                self.visual_queue.pop(0)
-                player = await YTDLSource.from_url(next_song, stream=True)
-                if player == -1:
-                    video = Video(next_song)
-                    embed.add_field(name=(f"{video.title}"), value=(f"🐧"), inline=True)
-                    self.visual_queue.pop(0)
-            self.visual_queue.append(player.title)
-        return player, embed
+            while self.player == -1:
+                next_song = self._queue.pop(0)[0]
+                self.player = await YTDLSource.from_url(next_song, stream=True)
+                if self.player == -1:
+                    embed.add_field(name=(f"{next_song[1]}"), value=(f"🐧"), inline=True)
+        return self.player, embed
 
     async def check_queue(self, ctx):
         """Plays the next song in the queue and sets 'playable' to the new song playing"""
         if ctx.voice_client:
             if self._loop == True:
-                player = await YTDLSource.from_url(self._loop_url, stream=True)
+                self.player = await YTDLSource.from_url(self._loop_url, stream=True)
                 ctx.voice_client.play(
-                    player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                embed, minutes, seconds = await self.send_play_msg(player)
+                    self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                embed, minutes, seconds = await self.send_play_msg()
                 time = minutes * 60 + seconds
                 await ctx.send(embed=embed, delete_after=time)
             else:
                 if self._queue != []:
                     safety = self._queue.pop(0)
-                    player = await YTDLSource.from_url(safety, stream=True)
-                    if player == -1:
-                        player, embed = await self.stuck(safety)
+                    self.player = await YTDLSource.from_url(safety[0], stream=True)
+                    if self.player == -1:
+                        self.player, embed = await self.stuck(safety)
                         await ctx.send(embed=embed, delete_after=20)
 
-                    self.playing = self.visual_queue.pop(0)
-                    ctx.voice_client.play(player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                    embed, minutes, seconds = await self.send_play_msg(player)
+                    self.playing = safety[1]
+                    ctx.voice_client.play(self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                    embed, minutes, seconds = await self.send_play_msg()
                     time = minutes * 60 + seconds
                     await ctx.send(embed=embed, delete_after=time)
-                    self._loop_url = player.url
+                    self._loop_url = self.player.url
                 else:
                     self.playing = ""
                     self._queue.clear()
-                    self.visual_queue.clear()
                     if self.disconnect_timer_check == False:
                         timer = 0
                         self.disconnect_timer_check = True
@@ -166,7 +160,6 @@ class Music(commands.Cog):
         try:
             await ctx.voice_client.disconnect()
             self._queue.clear()
-            self.visual_queue.clear()
             await ctx.message.add_reaction("😭")
         except AttributeError:
             embed = discord.Embed(
@@ -219,7 +212,6 @@ class Music(commands.Cog):
             voice_client = ctx.voice_client
             voice_client.stop()
             self._queue.clear()
-            self.visual_queue.clear()
             self._loop = False
             self._loop_url = ""
             await ctx.message.add_reaction("👌")
@@ -228,20 +220,36 @@ class Music(commands.Cog):
                 title="Nothings playing", description="", color=0x1F5F9C)
             await ctx.send(embed=embed, delete_after=600)
 
-    async def send_play_msg(self, player):
+    @commands.command(aliases=["Volume", "VOLUME", "v", "V"], brief="sets the volume. Values between 0 and 100.")
+    async def volume(self, ctx, vol: int):
+        """adjusts the volume of the player"""
+        if vol <= 0:
+            await ctx.message.add_reaction("🔇")
+        elif vol < 30 and vol >= 1:
+            await ctx.message.add_reaction("🔈")
+        elif vol < 75 and vol >= 30:
+            await ctx.message.add_reaction("🔉")
+        elif vol >= 75 and vol <= 100:
+            await ctx.message.add_reaction("🔊")
+        elif vol > 100:
+            await ctx.message.add_reaction("📢")
+        vol = vol / 100
+        self.player.volume = vol
+
+    async def send_play_msg(self):
         """takes in a player, returns a embed and two numbers, minutes and seconds"""
         embed = discord.Embed(title="Playing: ", description="", color=0x1F5F9C)
-        embed.add_field(name=(f"{player.title}"), value=(f"🐧"), inline=True)
-        if player.duration != None:
-            time_of_song = player.duration
+        embed.add_field(name=(f"{self.player.title}"), value=(f"🐧"), inline=True)
+        if self.player.duration != None:
+            time_of_song = self.player.duration
             try:
                 minutes, seconds = divmod(time_of_song, 60)
                 embed.add_field(name=(f"Duration: "), value=(f"{minutes} minutes, {seconds} seconds"))
             except TypeError as E:
-                minutes, seconds = player.duration.split(":")
+                minutes, seconds = self.player.duration.split(":")
                 embed.add_field(name=(f"Duration: "), value=(f"{minutes} minutes, {seconds} seconds"))
-            embed.add_field(name="URL: ", value=(player.url))
-            embed.set_thumbnail(url=(player.thumbnail))
+            embed.add_field(name="URL: ", value=(self.player.url))
+            embed.set_thumbnail(url=(self.player.thumbnail))
         if self._loop == True:
             embed.set_footer(text="_looped:🔁")
         return embed, minutes, seconds
@@ -262,8 +270,6 @@ class Music(commands.Cog):
     async def album(self, url):
         """takes in a url, returns the first song in the album and a embed"""
         error = False
-        track_list = []
-        track_list2 = []
         results = sp.album_tracks(url)
         count = 0
         try: 
@@ -273,8 +279,7 @@ class Music(commands.Cog):
                 for i in artists:
                     artist = i["name"]
                 title_artist = track["name"] + " " + artist
-                track_list.append(title_artist)
-                track_list2.append(track["name"])
+                self._queue.append((title_artist, track["name"]))
         except TypeError as E:
             count -= 1
             error = True
@@ -286,63 +291,55 @@ class Music(commands.Cog):
             embed = discord.Embed(
                 title=f"queued:{count}", description="", color=0x00FF00)
 
-        first_song = track_list.pop(0)
-        track_list2.pop(0)
-        print(track_list)
-        print(track_list2)
-        self._queue.extend(track_list)
-        self.visual_queue.extend(track_list2)
+        return self._queue.pop(0)[0], embed
 
-        return first_song, embed
-
-    def playlist_helper(self, tracks, count, track_list, track_list2):
+    def playlist_helper(self, tracks, count):
         """takes in a array, a number and two more arrays, track_list, track_list2. returns count, tracklist, tracklist2 and a boolean flag"""
         error = False
         for i in tracks["items"]:
             count += 1
             try:
                 if (i["track"]["artists"].__len__() == 1):
-                    track_list.append(i["track"]["name"] + " - " +
-                        i["track"]["artists"][0]["name"])
-                    track_list2.append(i["track"]["name"])
+                    self._queue.append(
+                        (i["track"]["name"] + " - " + i["track"]["artists"][0]["name"], 
+                        i["track"]["name"]))
                 else:
                     nameString = ""
                     for index, b in enumerate(i["track"]["artists"]):
                         nameString += (b["name"])
                         if (i["track"]["artists"].__len__() - 1 != index):
                             nameString += ", "
-                            track_list.append(i["track"]["name"] + " - " + nameString)
-                    track_list2.append(i["track"]["name"])
+                    self._queue.append(
+                        (i["track"]["name"] + " - " + nameString, 
+                        i["track"]["name"]))
             except TypeError as E:
                 count -= 1
                 write_error(E)
                 error = True
-        return count, track_list, track_list2, error
+        return count, error
 
     async def playlist(self, url):
         """takes in a url, returns a string and a embed"""
         error = False
         results = sp.user_playlist(user="", playlist_id=url)
-        track_list = []
-        track_list2 = []
         count = 0
         tracks = results["tracks"]
         while tracks["next"]:
-            count, track_list, track_list2, error = self.playlist_helper(tracks, count, track_list, track_list2)
+            count, error = self.playlist_helper(tracks, count)
             tracks = sp.next(tracks)
-        count, track_list, track_list2, error = self.playlist_helper(
-            tracks, count, track_list, track_list2)
-        first_song = track_list.pop(0)
-        track_list2.pop(0)
-        self._queue.extend(track_list)
-        self.visual_queue.extend(track_list2)
+
+        count, error = self.playlist_helper(tracks, count)
+
         if error:
             embed = discord.Embed(
                 title=f"queued:{count}\n The was an error loading 1 or more songs :(", description="", color=0xFF0000)
         else:
             embed = discord.Embed(
                 title=f"queued:{count}", description="", color=0x00FF00)
-        return(first_song, embed)
+
+        print(self._queue[0][0])
+
+        return self._queue.pop(0)[0], embed
 
     async def spot(self, url):
         """takes a string in, returns a string"""
@@ -356,19 +353,15 @@ class Music(commands.Cog):
     async def yt_playlist(self, url):
         """takes in a url, returns the first song and a embed"""
         playlist = yts.Playlist(url)
-        local_queue = []
-        local_visual_queue = []
+        track_list = []
+        track_list2 = []
         while playlist.hasMoreVideos:
             playlist.getNextVideos()
         for i in playlist.videos:
-            local_queue.append("https://www.youtube.com/watch?v=" + i["id"])
-            local_visual_queue.append(i["title"])
+            self._queue.append(("https://www.youtube.com/watch?v=" + i["id"], i["title"]))
         embed = discord.Embed(title=f"queued:{len(playlist.videos)}", description="", color=0x00FF00)
-        first_song = local_queue.pop(0)
-        local_visual_queue.pop(0)
-        self._queue.extend(local_queue)
-        self.visual_queue.extend(local_visual_queue)
-        return first_song, embed
+
+        return self._queue.pop(0)[0], embed
 
     @commands.command(aliases=["P", "p", "Play", "PLAY"], brief="play a song!")
     async def play(self, ctx, *, url):
@@ -415,8 +408,8 @@ class Music(commands.Cog):
                 embed1 = discord.Embed(title="...Loading...", description="", color=0xFFA500)
                 msg = await ctx.send(embed=embed1)
                 await msg.add_reaction("⌛")
-                player = await YTDLSource.from_url(url, stream=True)
-                if player == -1:
+                self.player = await YTDLSource.from_url(url, stream=True)
+                if self.player == -1:
                     await msg.clear_reaction("⌛")
                     embed = discord.Embed(title="Cannot play. Sorry.", description = "", color=0xFF0000)
                     embed.add_field(name=(f"{Video(url).title}"), value=("🐧"), inline=True)
@@ -425,26 +418,26 @@ class Music(commands.Cog):
                 else:
                     await msg.clear_reaction("⌛")
                     try:
-                        ctx.voice_client.play(player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                        self.playing = player.title
-                        self._loop_url = player.url
-                        embed, minutes, seconds = await self.send_play_msg(player)
-                        await msg.edit(embed=embed, delete_after=player.duration)
+                        """this try catch loop allows gandalf to leave while queueing a song and not break"""
+                        ctx.voice_client.play(self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                        self.playing = self.player.title
+                        self._loop_url = self.player.url
+                        embed, minutes, seconds = await self.send_play_msg()
+                        await msg.edit(embed=embed, delete_after=self.player.duration)
                     except AttributeError:
                         await self.vc_check(ctx)
-                        ctx.voice_client.play(player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                        self.playing = player.title
-                        self._loop_url = player.url
-                        embed, minutes, seconds = await self.send_play_msg(player)
-                        await msg.edit(embed=embed, delete_after=player.duration)
+                        ctx.voice_client.play(self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                        self.playing = self.player.title
+                        self._loop_url = self.player.url
+                        embed, minutes, seconds = await self.send_play_msg()
+                        await msg.edit(embed=embed, delete_after=self.player.duration)
             else:
                 if play_list_bool == True:
                     await ctx.send(embed=embed, delete_after=10)
                 else:
                     embed, url, title = await self.send_queued_msg(url)
                     await ctx.send(embed=embed, delete_after=10)
-                    self._queue.append(url)
-                    self.visual_queue.append(title)
+                    self._queue.append((url, title))
 
     @play.before_invoke
     async def vc_check(self, ctx):
@@ -460,12 +453,8 @@ class Music(commands.Cog):
     @commands.command(aliases=["Shuffle", "SHUFFLE"], brief="Shuffles the queue")
     async def shuffle(self, ctx):
         """shuffles the queue"""
-        list_of_tuples = list(zip(self._queue, self.visual_queue))
-        shuffle(list_of_tuples)
-        self._queue, self.visual_queue = zip(*list_of_tuples)
         await ctx.message.add_reaction("🔀")
-        self._queue = list(self._queue)
-        self.visual_queue = list(self.visual_queue)
+        shuffle(self._queue)
 
     @commands.command(aliases=["Loop", "un_loop"], brief="loop the song, stopped with .loop again")
     async def loop(self, ctx):
@@ -492,23 +481,22 @@ class Music(commands.Cog):
     async def jump(self, ctx, index: int):
         """takes in a user input, skips the current playing song and plays the users input"""
         if len(self._queue) == 0:
-            await ctx.send("Nothing in queue", delete_after=3)
-            await ctx.message.delete(delay=3)
+            embed = discord.Embed(
+                title="nothing in queue", description="", color=0x1F5F9C)
+            await ctx.send(embed=embed, delete_after=5)
         elif index == 0:
-            await ctx.send(f"that song is already playing", delete_after=5)
+            embed = discord.Embed(
+                title="that song is already playing", description="", color=0x1F5F9C)
+            await ctx.send(embed=embed, delete_after=5)
         elif index > len(self._queue):
-            await ctx.send(f"The queue is only {len(self._queue)} long", delete_after=5)
-            await ctx.message.delete(delay=3)
+            embed = discord.Embed(
+                title=f"The queue is only {len(self._queue)} long", description="", color=0x1F5F9C)
+            await ctx.send(embed=embed, delete_after=5)
         elif index <= len(self._queue):
-            print(len(self._queue))
-            print(len(self.visual_queue))
             self._queue.insert(0, self._queue.pop(index-1))
             await self.skip(ctx)
-            index -= 1
-            embed = discord.Embed(
-                title=f"Jumped to: {self.visual_queue[index]} at position {index + 1}", description="", color=0x1F5F9C)
-            self.visual_queue.insert(0, self.visual_queue.pop(index))
-            await ctx.send(embed=embed, delete_after=20)
+            await ctx.message.add_reaction("🦘")
+
 
     @commands.command(aliases=["Remove"], brief="remove a song at a certain position in the queue")
     async def remove(self, ctx, index: int):
@@ -524,10 +512,9 @@ class Music(commands.Cog):
         elif index <= len(self._queue):
             index -= 1
             embed = discord.Embed(
-                title=f"Removed: {self.visual_queue[index]} at position {index + 1}", description="", color=0x1F5F9C)
+                title=f"Removed: {self._queue[index][1]} at position {index + 1}", description="", color=0x1F5F9C)
             await ctx.send(embed=embed, delete_after=20)
             del self._queue[index]
-            del self.visual_queue[index]
 
     @commands.command(aliases=["Q", "q", "Queue", "QUEUE"], brief="list what items are in the queue and what position there are at")
     async def queue(self, ctx):
@@ -543,9 +530,9 @@ class Music(commands.Cog):
         else:
             embedVar = discord.Embed(
                 title="In queue:", description=f"PLAYING: {self.counter}: {self.playing}", color=0x1F5F9C)
-            for i in self.visual_queue:
+            for i in self._queue:
                 self.counter = self.counter + 1
-                embedVar.add_field(name=(f"{self.counter}:"), value=(i), inline=False)
+                embedVar.add_field(name=(f"{self.counter}:"), value=(i[1]), inline=False)
                 if self.counter == 10:
                     break
 
@@ -563,10 +550,10 @@ class Music(commands.Cog):
                     self.counter -= 20
                     embedVar1 = discord.Embed(
                         title="In queue:", description=f"PLAYING: {0}: {self.playing}", color=0x1F5F9C)
-                    for i in self.visual_queue[self.counter:]:
+                    for i in self._queue[self.counter:]:
                         self.counter += 1
                         embedVar1.add_field(
-                            name=(f"{self.counter}:"), value=(i), inline=False)
+                            name=(f"{self.counter}:"), value=(i[1]), inline=False)
                         if self.counter % 10 == 0:
                             break
                     await msg.edit(embed=embedVar1, delete_after=300)
@@ -574,10 +561,10 @@ class Music(commands.Cog):
                 if self.counter < len(self._queue) - 1:
                     embedVar2 = discord.Embed(
                         title="In queue:", description=f"PLAYING: {0}: {self.playing}", color=0x1F5F9C)
-                    for i in self.visual_queue[self.counter:]:
+                    for i in self._queue[self.counter:]:
                         self.counter += 1
                         embedVar2.add_field(
-                            name=(f"{self.counter}:"), value=(i), inline=False)
+                            name=(f"{self.counter}:"), value=(i[1]), inline=False)
                         if self.counter % 10 == 0:
                             break
                         if self.counter == len(self._queue):
@@ -624,23 +611,23 @@ class Music(commands.Cog):
                 query = choice(self.weeb_list)
                 self.weeb_list.remove(query)
 
-                player = await YTDLSource.from_url(query, stream=True)
-                ctx.voice_client.play(player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                self.playing = player.title
-                self.loop_url = player.url
+                self.player = await YTDLSource.from_url(query, stream=True)
+                ctx.voice_client.play(self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                self.playing = self.player.title
+                self.loop_url = self.player.url
 
-                embed, minutes, seconds = await self.send_play_msg(player)
-                await ctx.send(embed=embed, delete_after=player.duration)
+                embed, minutes, seconds = await self.send_play_msg()
+                await ctx.send(embed=embed, delete_after=self.player.duration)
             else:
                 query = await self.list_run_out()
 
-                player = await YTDLSource.from_url(query, stream=True)
-                ctx.voice_client.play(player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
-                self.playing = player.title
-                self.loop_url = player.url
+                self.player = await YTDLSource.from_url(query, stream=True)
+                ctx.voice_client.play(self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                self.playing = self.player.title
+                self.loop_url = self.player.url
 
-                embed, minutes, seconds = await self.send_play_msg(player)
-                await ctx.send(embed=embed, delete_after=player.duration)
+                embed, minutes, seconds = await self.send_play_msg()
+                await ctx.send(embed=embed, delete_after=self.player.duration)
         else:
             if self.weeb_list != []:
                 query = choice(self.weeb_list)
@@ -649,17 +636,14 @@ class Music(commands.Cog):
                 embed, url, title = await self.send_queued_msg(query)
                 await ctx.send(embed=embed, delete_after=10)
 
-                self.queue.append(url)
-                self.visual_queue.append(title)
-
+                self._queue.append((url, title))
             else:
                 query = await self.list_run_out()
 
                 embed, url = await self.send_queued_msg(query)
                 await ctx.send(embed=embed, delete_after=10)
 
-                self.queue.append(url)
-                self.visual_queue.append(title)
+                self._queue.append((url, title))
 
     @weeb.before_invoke
     async def checkz(self, ctx):
@@ -677,12 +661,12 @@ class Music(commands.Cog):
             await ctx.message.add_reaction("🐟")
             voice_client = ctx.voice_client
             voice_client.stop()
-            self.queue.clear()
+            self._queue.clear()
             query = f"{SONG_PATH}eel.mp3"
-            player = discord.PCMVolumeTransformer(
+            self.player = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(query))
             ctx.voice_client.play(
-                player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
 
     @eel.before_invoke
     async def eel_check(self, ctx):
@@ -699,12 +683,12 @@ class Music(commands.Cog):
         if ctx.author.voice:
             await ctx.message.add_reaction("🧀")
             ctx.voice_client.stop()
-            self.queue.clear()
+            self._queue.clear()
             query = f"{SONG_PATH}cheese.mp4"
-            player = discord.PCMVolumeTransformer(
+            self.player = discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(query))
             ctx.voice_client.play(
-                player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
+                self.player, after=lambda e: self.client.loop.create_task(self.check_queue(ctx)))
 
     @cheese.before_invoke
     async def cheese_check(self, ctx):
