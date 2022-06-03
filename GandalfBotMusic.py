@@ -53,7 +53,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
     """extracts info from a url via youtube-dl"""
     def __init__(self, source, *, data, volume=1):
         super().__init__(source, volume)
-        self.weeb_list = [] #git is complicated
+
         self.data = data
         self.title = data.get("title")
         self.url = data.get("webpage_url")
@@ -94,6 +94,7 @@ class Music(commands.Cog):
         self._loop = False
         self._loop_url: str = ""
         self._queue: list = [] #list of tuples [0] is the url [1] is the title
+        self.weeb_list: list = [] #git is complicated
         self.counter = 0
         self.client = client
         self.playing: str = ""
