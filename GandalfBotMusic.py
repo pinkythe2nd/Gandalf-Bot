@@ -53,6 +53,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
     """extracts info from a url via youtube-dl"""
     def __init__(self, source, *, data, volume=1):
         super().__init__(source, volume)
+        self.weeb_list = []
         self.data = data
         self.title = data.get("title")
         self.url = data.get("webpage_url")
